@@ -1,24 +1,22 @@
-// Простой калькулятор на командной строке
-// Это классика.
-// Ты можешь начать с калькулятора для простых арифметических операций,
-// а потом добавить дополнительные функции, например, работу с тригонометрическими или логарифмическими функциям
 package main
 
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
+	"strings"
 	"unicode"
 )
 
-// функция для проверки операторов
+// Проверка операторов
 func Operators(char byte) bool {
-	return char == '+' || char == '-' || char == '*' || char == '/'
+	return char == '+' || char == '-' || char == '*' || char == '/' || char == '%'
 }
 
-// функция для приоритета операторов
+// Приоритет операторов
 func Priority(char byte) int {
-	if char == '*' || char == '/' {
+	if char == '*' || char == '/' || char == '%' {
 		return 2
 	}
 	if char == '+' || char == '-' {
@@ -27,7 +25,7 @@ func Priority(char byte) int {
 	return 0
 }
 
-// функция для выполнения операций
+// Выполнение арифметических операций
 func OperatorsUsing(a, b float64, operator byte) (float64, error) {
 	switch operator {
 	case '+':
@@ -38,15 +36,44 @@ func OperatorsUsing(a, b float64, operator byte) (float64, error) {
 		return a * b, nil
 	case '/':
 		if b == 0 {
-			return 0, errors.New("Dividing by zero")
+			return 0, errors.New("dividing by zero")
 		}
 		return a / b, nil
+	case '%':
+		if b == 0 {
+			return 0, errors.New("dividing by zero in modulus")
+		}
+		return math.Mod(a, b), nil
 	default:
-		return 0, errors.New("Invalid operator")
+		return 0, errors.New("invalid operator")
 	}
 }
 
-// функция для вычисления выражений
+// Выполнение тригонометрических и логарифмических функций
+func MathFunctions(funcName string, param float64) (float64, error) {
+	switch funcName {
+	case "sin":
+		return math.Sin(param), nil
+	case "cos":
+		return math.Cos(param), nil
+	case "tan":
+		return math.Tan(param), nil
+	case "log":
+		if param <= 0 {
+			return 0, errors.New("logarithm undefined for non-positive values")
+		}
+		return math.Log(param), nil
+	case "log10":
+		if param <= 0 {
+			return 0, errors.New("logarithm undefined for non-positive values")
+		}
+		return math.Log10(param), nil
+	default:
+		return 0, errors.New("unknown function: " + funcName)
+	}
+}
+
+// Вычисление выражения
 func Calculation(input string) (float64, error) {
 	var nums []float64
 	var ops []byte
@@ -55,13 +82,13 @@ func Calculation(input string) (float64, error) {
 	for i < len(input) {
 		char := input[i]
 
-		// исключение пробелов
+		// Исключение пробелов
 		if unicode.IsSpace(rune(char)) {
 			i++
 			continue
 		}
 
-		// чтение числа
+		// Обработка числа
 		if unicode.IsDigit(rune(char)) || char == '.' {
 			numStart := i
 			for i < len(input) && (unicode.IsDigit(rune(input[i])) || input[i] == '.') {
@@ -69,18 +96,50 @@ func Calculation(input string) (float64, error) {
 			}
 			num, err := strconv.ParseFloat(input[numStart:i], 64)
 			if err != nil {
-				return 0, fmt.Errorf("Invalid number: %v", err)
+				return 0, fmt.Errorf("invalid number: %v", err)
 			}
 			nums = append(nums, num)
 			continue
 		}
 
-		// операторы
+		// Обработка функции
+		if unicode.IsLetter(rune(char)) {
+			funcStart := i
+			for i < len(input) && unicode.IsLetter(rune(input[i])) {
+				i++
+			}
+			funcName := input[funcStart:i]
+
+			if i < len(input) && input[i] == '(' {
+				openParen := i
+				i++
+				paramStart := i
+				fmt.Printf("Обнаружена открывающая скобка на позиции %d\n", openParen)
+				for i < len(input) && input[i] != ')' {
+					i++
+				}
+				if i == len(input) {
+					return 0, errors.New("mismatched parentheses in function")
+				}
+				param, err := Calculation(input[paramStart:i])
+				if err != nil {
+					return 0, err
+				}
+				result, err := MathFunctions(funcName, param)
+				if err != nil {
+					return 0, err
+				}
+				nums = append(nums, result)
+				i++ // Пропускаем закрывающую скобку
+				continue
+			} else {
+				return 0, errors.New("invalid function syntax")
+			}
+		}
+
+		// Обработка операторов
 		if Operators(char) {
 			for len(ops) > 0 && Priority(ops[len(ops)-1]) >= Priority(char) {
-				if len(nums) < 2 {
-					return 0, errors.New("Invalid expression")
-				}
 				b := nums[len(nums)-1]
 				a := nums[len(nums)-2]
 				nums = nums[:len(nums)-2]
@@ -92,16 +151,10 @@ func Calculation(input string) (float64, error) {
 				nums = append(nums, result)
 			}
 			ops = append(ops, char)
-		}
-
-		// обработка скобок
-		if char == '(' {
+		} else if char == '(' {
 			ops = append(ops, char)
 		} else if char == ')' {
 			for len(ops) > 0 && ops[len(ops)-1] != '(' {
-				if len(nums) < 2 {
-					return 0, errors.New("Invalid expression")
-				}
 				b := nums[len(nums)-1]
 				a := nums[len(nums)-2]
 				nums = nums[:len(nums)-2]
@@ -113,19 +166,18 @@ func Calculation(input string) (float64, error) {
 				nums = append(nums, result)
 			}
 			if len(ops) == 0 || ops[len(ops)-1] != '(' {
-				return 0, errors.New("Mismatched parentheses")
+				return 0, errors.New("mismatched parentheses")
 			}
 			ops = ops[:len(ops)-1]
+		} else {
+			return 0, errors.New("invalid character in input")
 		}
 
 		i++
 	}
 
-	// выполнение оставшихся операций
+	// Выполнение оставшихся операций
 	for len(ops) > 0 {
-		if len(nums) < 2 {
-			return 0, errors.New("Invalid expression")
-		}
 		b := nums[len(nums)-1]
 		a := nums[len(nums)-2]
 		nums = nums[:len(nums)-2]
@@ -138,22 +190,27 @@ func Calculation(input string) (float64, error) {
 	}
 
 	if len(nums) != 1 {
-		return 0, errors.New("Invalid expression")
+		return 0, errors.New("invalid expression")
 	}
 
 	return nums[0], nil
 }
 
+// Основная функция
 func main() {
+	fmt.Println("Введите математическое выражение (или 'exit' для выхода):")
 	for {
 		var input string
-		fmt.Println("Введите математическое выражение (или 'exit' для выхода):")
+		fmt.Print("> ")
 		fmt.Scanln(&input)
 
-		if input == "exit" {
+		// Проверка команды выхода
+		if strings.ToLower(input) == "exit" {
+			fmt.Println("Завершение программы.")
 			break
 		}
 
+		// Вычисление результата
 		result, err := Calculation(input)
 		if err != nil {
 			fmt.Println("Error:", err)
